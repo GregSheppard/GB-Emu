@@ -1,0 +1,581 @@
+#include "SharpLR35902.h"
+
+SharpLR35902::SharpLR35902() {
+	fillLut<0xFF>();
+	init();
+}
+
+uint8_t SharpLR35902::getNext() {
+	return bus.read(r.pc++);
+}
+
+uint16_t SharpLR35902::getNext16() {
+	uint8_t lower = getNext();
+	uint8_t upper = getNext();
+	return lower + (upper << 8);
+}
+
+void SharpLR35902::decodeOps(uint8_t op) {
+	(this->*lut[op])();
+}
+
+void SharpLR35902::run() {
+	while (true) {
+		decodeOps(bus.read(r.pc++));
+	}
+}
+
+void SharpLR35902::readROM() {
+	std::string romName;
+	std::cout << "enter ROM: ";
+	std::cin >> romName;
+	std::ifstream file(romName, std::ios::in | std::ios::binary | std::ios::ate);
+	std::streampos size;
+	char* memblock;
+	if (file.is_open()) {
+		std::cout << "opened ROM." << std::endl;
+		size = file.tellg();
+		ROMSize = size;
+		memblock = new char[size];
+		file.seekg(0, std::ios::beg);
+		file.read(memblock, size);
+		file.close();
+
+		ROM = new uint8_t[size];
+		for (int i = 0; i < size; i++) {
+			ROM[i] = memblock[i];
+		}
+	}
+	else {
+		std::cout << "Could not open ROM!" << std::endl;
+		std::exit(-1);
+	}
+}
+
+void SharpLR35902::loadROMBanktoMemory(int bank) {
+	if (bank == 0) {
+		for (int i = 0; i < 0x3FFF; i++) {
+			bus.write(i, ROM[i]);
+		}
+	}
+	else if (bank == 1) {
+		for (int i = 4000; i < 0x7FFF; i++) {
+			bus.write(i, ROM[i]);
+		}
+	}
+	//TODO: add more bank handling
+}
+
+void SharpLR35902::setup() {
+	r.af = 0x01B0;
+	r.bc = 0x0013;
+	r.de = 0x00D8;
+	r.hl = 0x014D;
+
+	r.pc = 0x100;
+	r.sp = 0xFFFE;
+
+	IME = 0;
+	EI_IME = 0;
+
+	bus.write(0xFF10, 0x80); //NR10
+	bus.write(0xFF11, 0xBF); //NR11
+	bus.write(0xFF12, 0xF3); //NR12
+	bus.write(0xFF14, 0xBF); //NR14
+	bus.write(0xFF16, 0x3F); //NR21
+	bus.write(0xFF19, 0xBF); //NR24
+	bus.write(0xFF1A, 0x7F); //NR30
+	bus.write(0xFF1B, 0xFF); //NR31
+	bus.write(0xFF1C, 0x9F); //NR32
+	bus.write(0xFF1E, 0xBF); //NR34
+	bus.write(0xFF20, 0xFF); //NR41
+	bus.write(0xFF23, 0xBF); //NR44
+	bus.write(0xFF24, 0x77); //NR50
+	bus.write(0xFF25, 0xF3); //NR51
+	bus.write(0xFF26, 0xF1); //NR52
+	bus.write(0xFF40, 0x91); //LCDC
+	bus.write(0xFF47, 0xFC); //BGP
+	bus.write(0xFF48, 0xFF); //OBP0
+	bus.write(0xFF49, 0xFF); //OBP1
+
+	bus.write(0xFF44, 0x90); //PEACHES LOGS?
+	bus.write(0xDD03, 0xDF);
+	bus.write(0xDD01, 0xDF);
+}
+
+void SharpLR35902::log(std::ofstream& file) {
+	file << "A: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.a;
+	file << " F: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.f;
+	file << " B: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.b;
+	file << " C: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.c;
+	file << " D: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.d;
+	file << " E: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.e;
+	file << " H: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.h;
+	file << " L: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.l;
+	file << " SP: " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +r.sp;
+	file << " PC: 00:" << std::uppercase << std::setfill('0') << std::setw(4) << std::right << std::hex << +r.pc;
+	file << " (" << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc);
+	file << " " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc + 1);
+	file << " " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc + 2);
+	file << " " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc + 3);
+	file << ")" << std::endl;
+}
+
+
+void SharpLR35902::init() {
+	setup();
+	readROM();
+	loadROMBanktoMemory(0);
+	loadROMBanktoMemory(1);
+}
+
+R16 SharpLR35902::r16FromBits(uint8_t bits, int group) {
+	bits = ((bits & 0b00110000) >> 4);
+	if (group == 1) {
+		switch (bits) {
+		case 0x0:
+			return R16::bc;
+		case 0x1:
+			return R16::de;
+		case 0x2:
+			return R16::hl;
+		case 0x3:
+			return R16::sp;
+		}
+	}
+	else if (group == 2) {
+		switch (bits) {
+		case 0x0:
+			return R16::bc;
+		case 0x1:
+			return R16::de;
+		case 0x2:
+			return R16::hlp;
+		case 0x3:
+			return R16::hlm;
+		}
+	}
+	else if (group == 3) {
+		switch (bits) {
+		case 0x0:
+			return R16::bc;
+		case 0x1:
+			return R16::de;
+		case 0x2:
+			return R16::hl;
+		case 0x3:
+			return R16::af;
+		}
+	}
+}
+
+Condition constexpr SharpLR35902::getCond(uint8_t bits) {
+	bits = ((bits & 0b00011000) >> 3);
+
+	if (bits == 0x0) {
+		return Condition::NZ;
+	}
+	else if (bits == 0x1) {
+		return Condition::Z;
+	}
+	else if (bits == 0x2) {
+		return Condition::NC;
+	}
+	else if (bits == 0x3) {
+		return Condition::C;
+	}
+}
+
+void SharpLR35902::flag(Condition c, bool set) {
+	if (set) { //setting flags
+		if (c == Condition::Z) {
+			r.f |= 0b10000000;
+		}
+		else if (c == Condition::N) {
+			r.f |= 0b01000000;
+		}
+		else if (c == Condition::H) {
+			r.f |= 0b00100000;
+		}
+		else if (c == Condition::C) {
+			r.f |= 0b00010000;
+		}
+	}
+	else { //unsetting flags
+		if (c == Condition::Z) {
+			r.f &= 0b01111111;
+		}
+		else if (c == Condition::N) {
+			r.f &= 0b10111111;
+		}
+		else if (c == Condition::H) {
+			r.f &= 0b11011111;
+		}
+		else if (c == Condition::C) {
+			r.f &= 0b11101111;
+		}
+	}
+}
+
+bool constexpr SharpLR35902::getFlag(Condition c) {
+	if (c == Condition::Z) {
+		return (r.f & 0b10000000) >> 7;
+	}
+	else if (c == Condition::N) {
+		return (r.f & 0b01000000) >> 6;
+	}
+	else if (c == Condition::H) {
+		return (r.f & 0b00100000) >> 5;
+	}
+	else if (c == Condition::C) {
+		return (r.f & 0b00010000) >> 4;
+	}
+	else if (c == Condition::NZ) {
+		return !((r.f & 0b10000000) >> 7);
+	}
+	else if (c == Condition::NC) {
+		return !((r.f & 0b00010000) >> 4);
+	}
+	else {
+		std::cout << "Attempted to get invalid flag!" << std::endl;
+	}
+}
+
+R8 SharpLR35902::r8FromBits(uint8_t bits) {
+	bits = ((bits & 0b00111000) >> 3);
+	switch (bits) {
+	case 0x0: return R8::b;
+	case 0x1: return R8::c;
+	case 0x2: return R8::d;
+	case 0x3: return R8::e;
+	case 0x4: return R8::h;
+	case 0x5: return R8::l;
+	case 0x6: return R8::MEM;
+	case 0x7: return R8::a;
+	}
+}
+
+R8 SharpLR35902::r8FromSrcBits(uint8_t bits) {
+	bits = (bits & 0b00000111);
+	switch (bits) {
+	case 0x0: return R8::b;
+	case 0x1: return R8::c;
+	case 0x2: return R8::d;
+	case 0x3: return R8::e;
+	case 0x4: return R8::h;
+	case 0x5: return R8::l;
+	case 0x6: return R8::MEM;
+	case 0x7: return R8::a;
+	}
+}
+
+void SharpLR35902::setR(R8 dest, uint8_t value) {
+	switch (dest) {
+	case R8::a: r.a = value; break;
+	case R8::b: r.b = value; break;
+	case R8::c: r.c = value; break;
+	case R8::d: r.d = value; break;
+	case R8::e: r.e = value; break;
+	case R8::h: r.h = value; break;
+	case R8::l: r.l = value; break;
+	case R8::f: r.f = value; break;
+	case R8::MEM:
+		bus.write(r.hl, value);
+		break;
+	}
+}
+
+uint8_t SharpLR35902::getR(R8 src) {
+	switch (src) {
+	case R8::a: return r.a;
+	case R8::b: return r.b;
+	case R8::c: return r.c;
+	case R8::d: return r.d;
+	case R8::e: return r.e;
+	case R8::h: return r.h;
+	case R8::l: return r.l;
+	case R8::f: return r.f;
+	case R8::MEM: return bus.read(r.hl);
+	}
+}
+
+void SharpLR35902::setR16(R16 dest, uint16_t value) {
+	switch (dest) {
+	case R16::af: r.af = value; break;
+	case R16::bc: r.bc = value; break;
+	case R16::de: r.de = value; break;
+	case R16::hl: r.hl = value; break;
+	case R16::sp: r.sp = value; break;
+	}
+}
+
+uint16_t SharpLR35902::getR16(R16 src) {
+	switch (src) {
+	case R16::af: return r.af;
+	case R16::bc: return r.bc;
+	case R16::de: return r.de;
+	case R16::hl: return r.hl;
+	case R16::sp: return r.sp;
+	case R16::hlp: return r.hl++;
+	case R16::hlm: return r.hl--;
+	}
+}
+
+void SharpLR35902::RLCA() {
+	uint8_t oldA = r.a;
+	r.a = (r.a << 1) + ((r.a & 0b10000000) >> 7);
+	flag(Condition::C, ((oldA & 0b10000000) >> 7));
+
+	flag(Condition::Z, false);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::RRCA() {
+	uint8_t oldA = r.a;
+	r.a = (r.a >> 1) + ((oldA & 0b00000001) << 7);
+	flag(Condition::C, (oldA & 0b00000001));
+
+	flag(Condition::Z, false);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::RLA() {
+	uint8_t oldA = r.a;
+	r.a = (r.a << 1) + getFlag(Condition::C);
+	flag(Condition::C, ((oldA & 0b10000000) >> 7));
+
+	flag(Condition::Z, false);
+	flag(Condition::H, false);
+	flag(Condition::N, false);
+}
+
+void SharpLR35902::RRA() {
+	uint8_t oldA = r.a;
+	r.a = (r.a >> 1) + (getFlag(Condition::C) << 7);
+	flag(Condition::C, (oldA & 0b00000001));
+
+	flag(Condition::Z, false);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::DAA() {
+	uint8_t correction = 0x0;
+	if (getFlag(Condition::H) || (!getFlag(Condition::N) && (r.a & 0x0F) > 0x9)) {
+		correction |= 0x6;
+	}
+
+	if (getFlag(Condition::C) || (!getFlag(Condition::N) && (r.a > 0x99))) {
+		correction |= 0x60;
+	}
+
+	if (getFlag(Condition::N)) {
+		r.a -= correction;
+	}
+	else {
+		r.a += correction;
+	}
+
+	if (((correction << 2) & 0x100) != 0) {
+		flag(Condition::C, true);
+	}
+
+	flag(Condition::H, false);
+	flag(Condition::Z, r.a == 0);
+}
+
+void SharpLR35902::CPL() {
+	r.a = ~r.a;
+	flag(Condition::N, true);
+	flag(Condition::H, true);
+}
+
+void SharpLR35902::SCF() {
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+	flag(Condition::C, true);
+}
+
+void SharpLR35902::CCF() {
+	flag(Condition::C, !getFlag(Condition::C));
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::ADD(uint8_t value) {
+	flag(Condition::H, ((r.a & 0xF) + (value & 0xF)) > 0xF);
+	flag(Condition::C, ((r.a + value) & 0x100) != 0);
+	r.a += value;
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, false);
+}
+
+void SharpLR35902::ADC(uint8_t value) {
+	bool oldC = getFlag(Condition::C);
+	flag(Condition::H, ((r.a & 0xF) + ((value) & 0xF) + getFlag(Condition::C)) > 0xF);
+	flag(Condition::C, ((r.a + value + getFlag(Condition::C)) & 0x100) != 0);
+	r.a += value + oldC;
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, false);
+}
+
+void SharpLR35902::SUB(uint8_t value) {
+	flag(Condition::C, value > r.a);
+	flag(Condition::H, ((r.a & 0xF) - (value & 0xF) < 0));
+	r.a -= value; //subtract
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, true);
+}
+
+void SharpLR35902::SBC(uint8_t value) {
+	bool oldCarry = getFlag(Condition::C);
+	flag(Condition::C, (r.a - value - getFlag(Condition::C) < 0));
+	flag(Condition::H, (((r.a & 0xF) - (value & 0xF) - oldCarry) < 0));
+	r.a -= (value + oldCarry); //subtract
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, true);
+}
+
+void SharpLR35902::AND(uint8_t value) {
+	r.a &= value;
+
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, true);
+	flag(Condition::C, false);
+}
+
+void SharpLR35902::OR(uint8_t value) {
+	r.a |= value;
+
+	flag(Condition::Z, r.a == 0x0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+	flag(Condition::C, false);
+}
+
+void SharpLR35902::XOR(uint8_t value) {
+	r.a ^= value;
+	flag(Condition::Z, r.a == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+	flag(Condition::C, false);
+}
+
+void SharpLR35902::CP(uint8_t value) {
+	uint8_t result = r.a - value;
+	flag(Condition::Z, result == 0);
+	flag(Condition::N, true);
+	flag(Condition::H, ((r.a & 0xF) - (value & 0xF) < 0));
+	flag(Condition::C, value > r.a);
+}
+
+void SharpLR35902::RET() {
+	uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
+	r.sp += 2;
+	r.pc = address;
+}
+
+void SharpLR35902::RETI() {
+	IME = true;
+	uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
+	r.sp += 2;
+	r.pc = address;
+}
+
+void SharpLR35902::JP_HL() {
+	r.pc = r.hl;
+}
+
+void SharpLR35902::LD_SP_HL() {
+	r.sp = r.hl;
+}
+
+void SharpLR35902::JP_U16() {
+	r.pc = getNext16();
+}
+
+void SharpLR35902::DI() {
+	IME = false;
+}
+
+void SharpLR35902::EI() {
+	EI_IME = true;
+}
+
+void SharpLR35902::RLC(R8 reg) {
+	uint8_t oldR = getR(reg);
+	setR(reg, (getR(reg) << 1) + ((getR(reg) & 0b10000000) >> 7));
+	flag(Condition::C, ((oldR & 0b10000000) >> 7));
+
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::RRC(R8 reg) {
+	flag(Condition::C, (getR(reg) & 0b00000001));
+	uint8_t oldReg = getR(reg);
+	setR(reg, (getR(reg) >> 1) + ((oldReg & 0b00000001) << 7));
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::RL(R8 reg) {
+	uint8_t oldR = getR(reg);
+	setR(reg, (getR(reg) << 1) + getFlag(Condition::C));
+	flag(Condition::C, ((oldR & 0b10000000) >> 7));
+
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::H, false);
+	flag(Condition::N, false);
+}
+
+void SharpLR35902::RR(R8 reg) {
+	uint8_t oldR = getR(reg);
+	setR(reg, (getR(reg) >> 1) + (getFlag(Condition::C) << 7));
+	flag(Condition::C, (oldR & 0b00000001));
+
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::SLA(R8 reg) {
+	uint8_t oldR = getR(reg);
+	setR(reg, (getR(reg) << 1));
+	flag(Condition::C, ((oldR & 0b10000000) >> 7));
+
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::H, false);
+	flag(Condition::N, false);
+}
+
+void SharpLR35902::SRA(R8 reg) {
+	uint8_t oldR = getR(reg);
+	setR(reg, (getR(reg) >> 1) + (oldR & 0b10000000));
+	flag(Condition::C, (oldR & 0b00000001));
+
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
+
+void SharpLR35902::SWAP(R8 reg) {
+	setR(reg, ((getR(reg) & 0x0F) << 4) + ((getR(reg) & 0xF0) >> 4));
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+	flag(Condition::C, false);
+}
+
+void SharpLR35902::SRL(R8 reg) {
+	flag(Condition::C, (getR(reg) & 0b00000001));
+	setR(reg, getR(reg) >> 1);
+	flag(Condition::Z, getR(reg) == 0);
+	flag(Condition::N, false);
+	flag(Condition::H, false);
+}
