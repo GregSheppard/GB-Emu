@@ -1,7 +1,13 @@
+.gitignore
+.vs/
 Debug/
+x64/
 GBEmu/Debug/
+GBEmu/x64
 GBEmu/BLARGG/
 GBEmu/LOGS/
 GBEmu/blue.gb
 GBEmu/bootrom.gb
 GBEmu/tetris.gb
+GBEMu/GBEmu.vcxproj
+GBEMu/GBEmu.vcxproj.user

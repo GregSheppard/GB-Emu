@@ -1,5 +1,10 @@
 #include "SharpLR35902.h"
 
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~CPU Functions~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+
 SharpLR35902::SharpLR35902() {
 	fillLut<0xFF>();
 	init();
@@ -15,6 +20,10 @@ uint16_t SharpLR35902::getNext16() {
 	return lower + (upper << 8);
 }
 
+void SharpLR35902::decodeCB() {
+	(this->*lutCB[bus.read(r.pc++)])();
+}
+
 void SharpLR35902::decodeOps(uint8_t op) {
 	(this->*lut[op])();
 }
@@ -22,6 +31,41 @@ void SharpLR35902::decodeOps(uint8_t op) {
 void SharpLR35902::run() {
 	while (true) {
 		decodeOps(bus.read(r.pc++));
+		handleInterrupts();
+
+	}
+}
+
+void SharpLR35902::handleInterrupts() {
+	if (IME) { //check if the interrupt master flag is set
+		uint8_t IE = bus.read(0xFFFF);
+		uint8_t IF = bus.read(0xFF0F);
+
+		if ((IE & 0b00000001) && (IF & 0b00000001)) { //VBlank
+			IME = false;
+			IF &= 0b11111110;
+			CALL_ADDR(0x40);
+		}
+		else if (((IE & 0b00000010) >> 1) && ((IF & 0b00000010) >> 1)) { //LCD STAT
+			IME = false;
+			IF &= 0b11111101;
+			CALL_ADDR(0x48);
+		}
+		else if (((IE & 0b00000100) >> 2) && ((IF & 0b00000100) >> 2)) { //Timer
+			IME = false;
+			IF &= 0b11111011;
+			CALL_ADDR(0x50);
+		}
+		else if (((IE & 0b00001000) >> 3) && ((IF & 0b00001000) >> 3)) { //Serial
+			IME = false;
+			IF &= 0b11110111;
+			CALL_ADDR(0x58);
+		}
+		else if (((IE & 0b00010000) >> 4) && ((IF & 0b00010000) >> 4)) { //Joypad
+			IME = false;
+			IF &= 0b11101111;
+			CALL_ADDR(0x60);
+		}
 	}
 }
 
@@ -128,6 +172,10 @@ void SharpLR35902::init() {
 	loadROMBanktoMemory(0);
 	loadROMBanktoMemory(1);
 }
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~Helper functions for CPU~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 R16 SharpLR35902::r16FromBits(uint8_t bits, int group) {
 	bits = ((bits & 0b00110000) >> 4);
@@ -319,6 +367,88 @@ uint16_t SharpLR35902::getR16(R16 src) {
 	case R16::hlp: return r.hl++;
 	case R16::hlm: return r.hl--;
 	}
+}
+
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~OPCode Functions~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+void SharpLR35902::ld_u16_SP() {
+	uint16_t addr = getNext16();
+	bus.write(addr, (r.sp & 0xFF));
+	bus.write(addr + 1, (r.sp >> 8));
+}
+
+void SharpLR35902::LD_FF00_u8_A() {
+	bus.write(0xFF00 + getNext(), r.a);
+}
+
+void SharpLR35902::ADD_SP_i8() {
+	int8_t signedByte = (int8_t)getNext();
+	uint16_t oldSP = r.sp;
+	int16_t address = (int16_t)oldSP + signedByte;
+
+	flag(Condition::Z, false);
+	flag(Condition::N, false);
+	flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
+	flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
+
+	r.sp = (uint16_t)address;
+}
+
+void SharpLR35902::LD_A_FF00_u8() {
+	r.a = bus.read(0xFF00 + getNext());
+}
+
+void SharpLR35902::LD_HL_SP_i8() {
+	int8_t signedByte = (int8_t)getNext();
+	int16_t address = (int16_t)r.sp + signedByte;
+
+	flag(Condition::Z, false);
+	flag(Condition::N, false);
+	flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
+	flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
+
+	r.hl = (uint16_t)address;
+}
+
+void SharpLR35902::JP() {
+	r.pc = getNext16();
+}
+
+void SharpLR35902::LD_FF00_C_A() {
+	bus.write(0xFF00 + r.c, r.a);
+}
+
+void SharpLR35902::LD_A_FF00_C() {
+	r.a = bus.read(0xFF00 + r.c);
+}
+
+void SharpLR35902::LD_U16_A() {
+	bus.write(getNext16(), r.a);
+}
+
+void SharpLR35902::LD_A_U16() {
+	r.a = bus.read(getNext16());
+}
+
+void SharpLR35902::CALL() {
+	uint16_t addr = getNext16();
+	bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
+	bus.write(--r.sp, (r.pc) & 0x00FF);
+	r.pc = addr;
+}
+
+void SharpLR35902::JR() {
+	int8_t signedByte = getNext();
+	int16_t currentAddr = r.pc;
+	r.pc = (uint16_t)(currentAddr + signedByte);
+}
+
+void SharpLR35902::CALL_ADDR(uint16_t addr) {
+	bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
+	bus.write(--r.sp, (r.pc) & 0x00FF);
+	r.pc = addr;
 }
 
 void SharpLR35902::RLCA() {

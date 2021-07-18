@@ -3,27 +3,36 @@
 #include <cstdint>
 #include <map>
 #include <fstream>
+#include <chrono>
+#include <thread>
 #include "Register.h"
 #include "AddressBus.h"
 
+//enum class containing all 8 bit registers and (HL) as MEM
 enum class R8 {
 	b, c, d, e, h, l, a, f, MEM
 };
 
+//enum class containing all 16 bit registers and (hl++), (hl--)
 enum class R16 {
 	bc, de, hl, af, sp, hlp, hlm
 };
 
+//enum class containing all flags and conditions for JR, CALL, etc. grouped
 enum class Condition {
 	NZ, Z, NC, C, N, H
 };
 
-class SharpLR35902 {
+class SharpLR35902 final {
 private:
 	//CPU
 	Register r;
 	bool IME, EI_IME;
 	AddressBus bus;
+
+	//frequency
+	const double FREQ = 4194304;
+	double cycles = 0;
 
 	//ROM
 	uint8_t* ROM;
@@ -34,28 +43,49 @@ private:
 	void readROM();
 	void setup();
 	void log(std::ofstream& file);
+	
+	//CPU functions
 
-	//helper
 	void init();
 	void decodeOps(uint8_t op);
+	void handleInterrupts();
 
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~CPU HELPER FUNCTIONS~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+	//sets 8 bit register based on enum
 	void setR(R8 dest, uint8_t value);
+	//returns 8 bit register value based on enum
 	uint8_t getR(R8 src);
+	//sets 16 bit register based on enum
 	void setR16(R16 dest, uint16_t value);
+	//returns 16 bit register based on enum
 	uint16_t getR16(R16 src);
+	//returns 16 bit register from bits within opcode decoding table
 	R16 r16FromBits(uint8_t bits, int group);
+	//returns 8 bit register from destination bits within opcode decoding table
 	R8 r8FromBits(uint8_t bits);
+	//returns 8 bit register from source bits within opcode decoding table
 	R8 r8FromSrcBits(uint8_t bits);
 
+	//returns condition enum based on bits from opcode decoding table for JR,CALL,etc.
 	Condition constexpr getCond(uint8_t bits);
+	//returns flag state from condition enum (Z, N, H, C)
 	bool constexpr getFlag(Condition c);
+	//sets flag state
 	void flag(Condition c, bool set);
 
+	//returns the next byte from the program counter
 	uint8_t getNext();
+	//returns the next word from the program counter
 	uint16_t getNext16();
+	//general CALL function used in handling interrupts
+	void CALL_ADDR(uint16_t addr);
 
-
-	//ALU functions define within header
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~START OPCODE INSTRUCTIONS~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 	//flag ops
 	void RLCA();
@@ -96,31 +126,26 @@ private:
 	void SWAP(R8 reg);
 	void SRL(R8 reg);
 
+	void STOP();
+	void HALT();
+	void JP();
+	void JR();
+	void ld_u16_SP();
+	void decodeCB();
 	void nop() {}
-
-	void decodeCB() {
-		(this->*lutCB[bus.read(r.pc++)])();
-	}
+	void LD_HL_SP_i8();
+	void LD_A_FF00_u8();
+	void ADD_SP_i8();
+	void LD_FF00_u8_A();
+	void CALL();
+	void LD_A_U16();
+	void LD_U16_A();
+	void LD_A_FF00_C();
+	void LD_FF00_C_A();
 
 	template<R16 dest, uint16_t value>
 	void ld_r16_r16() {
 		setR16(dest, value);
-	}
-
-	void ld_u16_SP() {
-		uint16_t addr = getNext16();
-		bus.write(addr, (r.sp & 0xFF));
-		bus.write(addr + 1, (r.sp >> 8));
-	}
-
-	void JP() {
-		r.pc = getNext16();
-	}
-
-	void JR() {
-		int8_t signedByte = getNext();
-		int16_t currentAddr = r.pc;
-		r.pc = (uint16_t)(currentAddr + signedByte);
 	}
 
 	template<uint8_t op>
@@ -231,39 +256,6 @@ private:
 		}
 	}
 
-	void LD_FF00_u8_A() {
-		bus.write(0xFF00 + getNext(), r.a);
-	}
-
-	void ADD_SP_i8() {
-		int8_t signedByte = (int8_t)getNext();
-		uint16_t oldSP = r.sp;
-		int16_t address = (int16_t)oldSP + signedByte;
-
-		flag(Condition::Z, false);
-		flag(Condition::N, false);
-		flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
-		flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
-
-		r.sp = (uint16_t)address;
-	}
-
-	void LD_A_FF00_u8() {
-		r.a = bus.read(0xFF00 + getNext());
-	}
-
-	void LD_HL_SP_i8() {
-		int8_t signedByte = (int8_t)getNext();
-		int16_t address = (int16_t)r.sp + signedByte;
-
-		flag(Condition::Z, false);
-		flag(Condition::N, false);
-		flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
-		flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
-
-		r.hl = (uint16_t)address;
-	}
-
 	template<uint8_t op>
 	void POP_R16() {
 		uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
@@ -300,22 +292,6 @@ private:
 		}
 	}
 
-	void LD_FF00_C_A() {
-		bus.write(0xFF00 + r.c, r.a);
-	}
-
-	void LD_A_FF00_C() {
-		r.a = bus.read(0xFF00 + r.c);
-	}
-
-	void LD_U16_A() {
-		bus.write(getNext16(), r.a);
-	}
-
-	void LD_A_U16() {
-		r.a = bus.read(getNext16());
-	}
-
 	template<uint8_t op>
 	void OPCODE_GROUP3() {
 		uint8_t bits = (op & 0b00111000) >> 3;
@@ -342,13 +318,6 @@ private:
 		uint16_t reg = getR16(r16FromBits(op, 3));
 		bus.write(--r.sp, ((reg) & 0xFF00) >> 8); //upper
 		bus.write(--r.sp, (reg) & 0x00FF); //lower
-	}
-
-	void CALL() {
-		uint16_t addr = getNext16();
-		bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
-		bus.write(--r.sp, (r.pc) & 0x00FF);
-		r.pc = addr;
 	}
 
 	template<uint8_t op>
@@ -440,14 +409,10 @@ private:
 		case 0x7: setR(reg, getR(reg) | 0b10000000); break;
 		}
 	}
-	
-	void HALT() {
 
-	}
-
-	void STOP() {
-
-	}
+/*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~END OPCODE INSTRUCTIONS~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 	//compile time function pointer map for decoding opcodes
 	typedef void(SharpLR35902::*fp)();
