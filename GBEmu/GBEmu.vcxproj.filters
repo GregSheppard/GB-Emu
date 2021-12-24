@@ -13,12 +13,6 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
-    <Filter Include="Source Files\CPU">
-      <UniqueIdentifier>{1e5db5ad-cfc6-4bff-af06-c6bed653ec47}</UniqueIdentifier>
-    </Filter>
-    <Filter Include="Header Files\CPU">
-      <UniqueIdentifier>{541da93a-995c-41d6-99ab-1592668d87cc}</UniqueIdentifier>
-    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="blue.gb">
@@ -39,24 +33,36 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AddressBus.h">
-      <Filter>Header Files\CPU</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="Register.h">
-      <Filter>Header Files\CPU</Filter>
+      <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="SharpLR35902.h">
-      <Filter>Header Files\CPU</Filter>
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PPU.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="UI.h">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="GBEmu.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="SharpLR35902.cpp">
-      <Filter>Source Files\CPU</Filter>
-    </ClCompile>
     <ClCompile Include="AddressBus.cpp">
-      <Filter>Source Files\CPU</Filter>
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="SharpLR35902.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PPU.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="UI.cpp">
+      <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

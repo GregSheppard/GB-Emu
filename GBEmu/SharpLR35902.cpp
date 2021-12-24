@@ -5,9 +5,8 @@
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
 
-SharpLR35902::SharpLR35902() {
+SharpLR35902::SharpLR35902(AddressBus& _bus) : bus(_bus) {
 	fillLut<0xFF>();
-	init();
 }
 
 uint8_t SharpLR35902::getNext() {
@@ -29,26 +28,22 @@ void SharpLR35902::decodeOps(uint8_t op) {
 }
 
 void SharpLR35902::run() {
-	while (true) {
-		handleInterrupts();
-		if (halt == false) {
-			decodeOps(bus.read(r.pc++));
-		}
-
-		if (EI_IME == 1 && IME == 0) {
-			IME = 1;
-			EI_IME = 0;
-		}
-
+	uint8_t nextOp = bus.read(r.pc++);
+	handleInterrupts();
+	decodeOps(nextOp);
+	if (EI_IME) {
+		IME = true;
+		EI_IME = false;
 	}
 }
 
 void SharpLR35902::handleInterrupts() {
-	if (IME) { //check if the interrupt master flag is set
-		uint8_t IE = bus.read(0xFFFF);
-		uint8_t IF = bus.read(0xFF0F);
+	if (IME) {
+		uint8_t IE = bus.getInterruptEnable();
+		uint8_t IF = bus.getInterruptFlag();
 
 		if ((IE & 0b00000001) && (IF & 0b00000001)) { //VBlank
+			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
 			IME = false;
 			IF &= 0b11111110;
 			CALL_ADDR(0x40);
@@ -76,45 +71,8 @@ void SharpLR35902::handleInterrupts() {
 	}
 }
 
-void SharpLR35902::readROM() {
-	std::string romName;
-	std::cout << "enter ROM: ";
-	std::cin >> romName;
-	std::ifstream file(romName, std::ios::in | std::ios::binary | std::ios::ate);
-	std::streampos size;
-	char* memblock;
-	if (file.is_open()) {
-		std::cout << "opened ROM." << std::endl;
-		size = file.tellg();
-		ROMSize = size;
-		memblock = new char[size];
-		file.seekg(0, std::ios::beg);
-		file.read(memblock, size);
-		file.close();
-
-		ROM = new uint8_t[size];
-		for (int i = 0; i < size; i++) {
-			ROM[i] = memblock[i];
-		}
-	}
-	else {
-		std::cout << "Could not open ROM!" << std::endl;
-		std::exit(-1);
-	}
-}
-
-void SharpLR35902::loadROMBanktoMemory(int bank) {
-	if (bank == 0) {
-		for (int i = 0; i < 0x3FFF; i++) {
-			bus.write(i, ROM[i]);
-		}
-	}
-	else if (bank == 1) {
-		for (int i = 4000; i < 0x7FFF; i++) {
-			bus.write(i, ROM[i]);
-		}
-	}
-	//TODO: add more bank handling
+void SharpLR35902::setPC(uint16_t addr) {
+	r.pc = addr;
 }
 
 void SharpLR35902::setup() {
@@ -170,14 +128,6 @@ void SharpLR35902::log(std::ofstream& file) {
 	file << " " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc + 2);
 	file << " " << std::uppercase << std::setfill('0') << std::setw(2) << std::right << std::hex << +bus.read(r.pc + 3);
 	file << ")" << std::endl;
-}
-
-
-void SharpLR35902::init() {
-	setup();
-	readROM();
-	loadROMBanktoMemory(0);
-	loadROMBanktoMemory(1);
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -407,7 +357,7 @@ void SharpLR35902::ADD_SP_i8() {
 	flag(Condition::N, false);
 	flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
 	flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
-
+	bus.addCycles(4); // internal
 	r.sp = (uint16_t)address;
 }
 
@@ -423,7 +373,7 @@ void SharpLR35902::LD_HL_SP_i8() {
 	flag(Condition::N, false);
 	flag(Condition::H, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x10) == 0x10);
 	flag(Condition::C, ((r.sp ^ signedByte ^ (address & 0xFFFF)) & 0x100) == 0x100);
-
+	bus.addCycles(4); // internal
 	r.hl = (uint16_t)address;
 }
 
@@ -449,6 +399,7 @@ void SharpLR35902::LD_A_U16() {
 
 void SharpLR35902::CALL() {
 	uint16_t addr = getNext16();
+	bus.addCycles(4); // internal
 	bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
 	bus.write(--r.sp, (r.pc) & 0x00FF);
 	r.pc = addr;
@@ -457,12 +408,16 @@ void SharpLR35902::CALL() {
 void SharpLR35902::JR() {
 	int8_t signedByte = getNext();
 	int16_t currentAddr = r.pc;
+	bus.addCycles(4); // internal modify pc
 	r.pc = (uint16_t)(currentAddr + signedByte);
 }
 
 void SharpLR35902::CALL_ADDR(uint16_t addr) {
-	bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
-	bus.write(--r.sp, (r.pc) & 0x00FF);
+	r.sp--; bus.addCycles(4); // decrement sp
+	bus.write(r.sp, ((r.pc) & 0xFF00) >> 8);
+	r.sp--;
+	bus.write(r.sp, (r.pc) & 0x00FF);
+	bus.addCycles(4); // write pc
 	r.pc = addr;
 }
 
@@ -620,6 +575,7 @@ void SharpLR35902::CP(uint8_t value) {
 void SharpLR35902::RET() {
 	uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
 	r.sp += 2;
+	bus.addCycles(4); //set pc?
 	r.pc = address;
 }
 
@@ -627,6 +583,7 @@ void SharpLR35902::RETI() {
 	IME = true;
 	uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
 	r.sp += 2;
+	bus.addCycles(4); //set pc?
 	r.pc = address;
 }
 
@@ -636,10 +593,12 @@ void SharpLR35902::JP_HL() {
 
 void SharpLR35902::LD_SP_HL() {
 	r.sp = r.hl;
+	bus.addCycles(4); //internal
 }
 
 void SharpLR35902::JP_U16() {
 	r.pc = getNext16();
+	bus.addCycles(4); //branch decision?
 }
 
 void SharpLR35902::DI() {

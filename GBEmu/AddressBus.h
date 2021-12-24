@@ -22,9 +22,31 @@ NOTABLE
 
 class AddressBus {
 private:
-	uint8_t memory[0xFFFF + 1];
+	//ROM
+	uint8_t* ROM;
+	unsigned int ROMSize;
+	void loadROMFromFile();
+	void insertCartridge();
+
+	//memory
+	uint8_t bank0[0x3FFF + 1];
+	uint8_t bankN[0x3FFF + 1];
+	uint8_t VRAM[0x3FFF + 1];
+	uint8_t ERAM[0x3FFF + 1];
+	uint8_t WRAM[0x7FFF + 1];
+	uint8_t OAM[0x9F + 1];
+	uint8_t IO[0x7F + 1];
+	uint8_t HRAM[0x7E + 1];
+	uint8_t interruptEnable;
+
+	long cycles;
+
 public:
-	void init();
+	AddressBus();
 	void write(uint16_t address, uint8_t value);
 	uint8_t read(uint16_t address);
+	void addCycles(short cycles);
+	uint8_t getInterruptFlag();
+	uint8_t getInterruptEnable();
+	uint8_t* getRegister(uint16_t addr);
 };

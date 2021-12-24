@@ -2,11 +2,37 @@
 #include "SDL.h"
 #undef main
 #include <stdio.h>
+#include <memory>
+#include "UI.h"
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
+#define FREQ 4194304
 
 int main() {
+	UI i;
+	AddressBus bus;
+	SharpLR35902 cpu(bus);
+	cpu.setPC(0x100);
+	while (true) {
+		cpu.run();
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*int main() {
 	SDL_Window* window;
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -26,4 +52,4 @@ int main() {
 
 	SDL_Quit();
 	return 0;
-}
+}*/

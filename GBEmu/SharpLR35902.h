@@ -28,26 +28,14 @@ private:
 	//CPU
 	Register r;
 	bool IME, EI_IME;
-	AddressBus bus;
+	AddressBus& bus;
 	bool halt = false;
 
-	//frequency
-	const double FREQ = 4194304;
-	double cycles = 0;
-
-	//ROM
-	uint8_t* ROM;
-	unsigned int ROMSize;
-
 	//funcs
-	void loadROMBanktoMemory(int bank);
-	void readROM();
 	void setup();
 	void log(std::ofstream& file);
 	
 	//CPU functions
-
-	void init();
 	void decodeOps(uint8_t op);
 	void handleInterrupts();
 
@@ -153,6 +141,7 @@ private:
 	void JR_CC() {
 		int8_t signedByte = getNext();
 		if (getFlag(getCond(op))) {
+			bus.addCycles(4); // internal modify pc only if branch
 			r.pc = (uint16_t)((int16_t)r.pc + signedByte);
 		}
 	}
@@ -166,6 +155,7 @@ private:
 	void ADD_HL_R16() {
 		flag(Condition::H, ((getR16(r16FromBits(op, 1)) & 0xFFF) + (getR16(R16::hl) & 0xFFF)) > 0xFFF);
 		flag(Condition::C, ((getR16(r16FromBits(op, 1)) + getR16(R16::hl)) & 0x10000) != 0);
+		bus.addCycles(4); //internal writing to H/L 
 		setR16(R16::hl, getR16(R16::hl) + getR16(r16FromBits(op, 1)));
 		flag(Condition::N, false);
 	}
@@ -187,6 +177,7 @@ private:
 
 	template<uint8_t op>
 	void DEC_R16() {
+		bus.addCycles(4); //internal write to upper/lower
 		setR16(r16FromBits(op, 1), getR16(r16FromBits(op, 1)) - 1);
 	}
 
@@ -250,9 +241,11 @@ private:
 
 	template<uint8_t op>
 	void RET_CC() {
+		bus.addCycles(4); // branch decision
 		if (getFlag(getCond(op))) {
 			uint16_t address = bus.read(r.sp) + (bus.read(r.sp + 1) << 8);
 			r.sp += 2;
+			bus.addCycles(4); //internal set pc
 			r.pc = address;
 		}
 	}
@@ -308,6 +301,7 @@ private:
 	void CALL_CC() {
 		uint16_t addr = getNext16();
 		if (getFlag(getCond(op))) {
+			bus.addCycles(4); // branch decision
 			bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
 			bus.write(--r.sp, (r.pc) & 0x00FF);
 			r.pc = addr;
@@ -317,6 +311,7 @@ private:
 	template<uint8_t op>
 	void PUSH() {
 		uint16_t reg = getR16(r16FromBits(op, 3));
+		bus.addCycles(4); //internal
 		bus.write(--r.sp, ((reg) & 0xFF00) >> 8); //upper
 		bus.write(--r.sp, (reg) & 0x00FF); //lower
 	}
@@ -340,6 +335,7 @@ private:
 	template<uint8_t op>
 	void RST() {
 		uint16_t addr = (op & 0b00111000);
+		bus.addCycles(4); //internal
 		bus.write(--r.sp, ((r.pc) & 0xFF00) >> 8);
 		bus.write(--r.sp, (r.pc) & 0x00FF);
 		r.pc = addr;
@@ -417,8 +413,8 @@ private:
 
 	//compile time function pointer map for decoding opcodes
 	typedef void(SharpLR35902::*fp)();
-	std::map<uint8_t, fp> lut;
-	std::map<uint8_t, fp> lutCB;
+	fp lut [0xFF+1];
+	fp lutCB [0xFF+1];
 
 	//template for loop used to fill LUT at compile time
 	//since this is a compile time function its okay to be inefficient
@@ -554,6 +550,7 @@ private:
 	}
 
 public:
-	SharpLR35902();
+	SharpLR35902(AddressBus& bus);
 	void run();
+	void setPC(uint16_t addr);
 };

@@ -1,5 +1,6 @@
 #include "AddressBus.h"
 #include <iostream>
+#include <fstream>
 
 /*
 MEMORY MAP:
@@ -20,44 +21,159 @@ NOTABLE
 0xFF01 - SERIAL BUS
 */
 
-void AddressBus::init() {
-	memset(memory, 0, sizeof(memory));
+AddressBus::AddressBus() {
+	loadROMFromFile();
+	insertCartridge();
 }
 
-void AddressBus::write(uint16_t address, uint8_t value) {
-	if (address >= 0x0000 && address <= 0x7FFF) { //ROM BANKS
-		//std::cout << "Attempted write to ROM bank area." << std::endl;
-		memory[address] = value;
+void AddressBus::loadROMFromFile() {
+	std::string romName;
+	std::cout << "enter ROM: ";
+	std::cin >> romName;
+	std::ifstream file(romName, std::ios::in | std::ios::binary | std::ios::ate);
+	std::streampos size;
+	char* memblock;
+	if (file.is_open()) {
+		std::cout << "opened ROM." << std::endl;
+		size = file.tellg();
+		ROMSize = size;
+		memblock = new char[size];
+		file.seekg(0, std::ios::beg);
+		file.read(memblock, size);
+		file.close();
+
+		ROM = new uint8_t[size];
+		for (int i = 0; i < size; i++) {
+			ROM[i] = memblock[i];
+		}
 	}
-	else if (address >= 0x8000 && address <= 0xDFFF) { //VRAM and RAMS
-		memory[address] = value;
-	}
-	else if (address >= 0xE000 && address <= 0xFDFF) { //ECHO RAM
-		memory[address] = value;
-	}
-	else if (address >= 0xFE00 && address <= 0xFE9F) { //SPRITE ATTRIBUTE TABLE
-		memory[address] = value;
-	}
-	else if (address >= 0xFEA0 && address <= 0xFEFF) { // FORBIDDEN AREA
-		std::cout << "Attempted write to unusable area. forbidden." << std::endl;
+	else {
+		std::cout << "Could not open ROM!" << std::endl;
 		std::exit(-1);
 	}
-	else if ((address >= 0xFF00 && address <= 0xFF7F) && address != 0xFF01) { // IO REGISTERS
-		memory[address] = value;
-	}
-	else if (address == 0xFF01) {
-		std::cout << (char)value; //print SB writes
-		memory[address] = value;
-	}
-	else if (address >= 0xFF80 && address <= 0xFFFE) { //HIGH RAM
-		memory[address] = value;
-	}
-	else if (address == 0xFFFF) { //interrupt enable register
-		memory[address] = value;
-	}
-
 }
 
-uint8_t AddressBus::read(uint16_t address) {
-	return memory[address];
+void AddressBus::insertCartridge() {
+	for (int i = 0; i <= 0x3FFF; i++) {
+		bank0[i] = ROM[i];
+	}
+	for (int i = 0x4000; i <= 0x7FFF; i++) { // TODO: add support for mbcs
+		bankN[i-0x4000] = ROM[i];
+	}
+}
+
+void AddressBus::write(uint16_t addr, uint8_t value) {
+	cycles += 4;
+	if (addr >= 0x0 && addr <= 0x3FFF) {
+		std::cout << "write to ROM" << std::endl;
+	}
+	else if (addr >= 0x4000 && addr <= 0x7FFF) {
+		std::cout << "write to ROM" << std::endl;
+	}
+	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		VRAM[addr - 0x8000] = value;
+	}
+	else if (addr >= 0xA000 && addr <= 0xBFFF) {
+		ERAM[addr - 0xA000] = value;
+	}
+	else if (addr >= 0xC000 && addr <= 0xDFFF) {
+		WRAM[addr - 0xC000] = value;
+	}
+	else if (addr >= 0xE000 && addr <= 0xFDFF) { //echo ram
+		WRAM[addr - 0xE000] = value;
+	}
+	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		OAM[addr - 0xFE00] = value;
+	}
+	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
+		IO[addr - 0xFF00] = value;
+		if (addr == 0xFF01) {
+			std::cout << (char)value;
+		}
+	}
+	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+		HRAM[addr - 0xFF80] = value;
+	}
+	else if (addr == 0xFFFF) {
+		interruptEnable = value;
+	}
+}
+
+uint8_t AddressBus::read(uint16_t addr) {
+	cycles += 4;
+	if (addr >= 0x0 && addr <= 0x3FFF) {
+		return bank0[addr];
+	}
+	else if (addr >= 0x4000 && addr <= 0x7FFF) {
+		return bankN[addr - 0x4000];
+	}
+	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		return VRAM[addr - 0x8000];
+	}
+	else if (addr >= 0xA000 && addr <= 0xBFFF) {
+		return ERAM[addr - 0xA000];
+	}
+	else if (addr >= 0xC000 && addr <= 0xDFFF) {
+		return WRAM[addr - 0xC000];
+	}
+	else if (addr >= 0xE000 && addr <= 0xFDFF) { //echo ram
+		return WRAM[addr - 0xE000];
+	}
+	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		return OAM[addr - 0xFE00];
+	}
+	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
+		return IO[addr - 0xFF00];
+	}
+	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+		return HRAM[addr - 0xFF80];
+	}
+	else if (addr == 0xFFFF) {
+		return interruptEnable;
+	}
+}
+
+uint8_t* AddressBus::getRegister(uint16_t addr) {
+	if (addr >= 0x0 && addr <= 0x3FFF) {
+		return &bank0[addr];
+	}
+	else if (addr >= 0x4000 && addr <= 0x7FFF) {
+		return &bankN[addr - 0x4000];
+	}
+	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		return &VRAM[addr - 0x8000];
+	}
+	else if (addr >= 0xA000 && addr <= 0xBFFF) {
+		return &ERAM[addr - 0xA000];
+	}
+	else if (addr >= 0xC000 && addr <= 0xDFFF) {
+		return &WRAM[addr - 0xC000];
+	}
+	else if (addr >= 0xE000 && addr <= 0xFDFF) { //echo ram
+		return &WRAM[addr - 0xE000];
+	}
+	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		return &OAM[addr - 0xFE00];
+	}
+	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
+		return &IO[addr - 0xFF00];
+	}
+	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+		return &HRAM[addr - 0xFF80];
+	}
+	else if (addr == 0xFFFF) {
+		return &interruptEnable;
+	}
+}
+
+void AddressBus::addCycles(short cycle) {
+	cycles += cycle;
+}
+
+uint8_t AddressBus::getInterruptEnable() {
+	return interruptEnable;
+}
+
+uint8_t AddressBus::getInterruptFlag() {
+	return IO[0xF];
 }
