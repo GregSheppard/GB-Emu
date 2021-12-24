@@ -13,7 +13,7 @@ enum class R8 {
 	b, c, d, e, h, l, a, f, MEM
 };
 
-//enum class containing all 16 bit registers and (hl++), (hl--)
+//enum class containing all 16 bit registers and hl++, hl--
 enum class R16 {
 	bc, de, hl, af, sp, hlp, hlm
 };
@@ -29,6 +29,7 @@ private:
 	Register r;
 	bool IME, EI_IME;
 	AddressBus bus;
+	bool halt = false;
 
 	//frequency
 	const double FREQ = 4194304;

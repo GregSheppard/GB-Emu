@@ -30,8 +30,15 @@ void SharpLR35902::decodeOps(uint8_t op) {
 
 void SharpLR35902::run() {
 	while (true) {
-		decodeOps(bus.read(r.pc++));
 		handleInterrupts();
+		if (halt == false) {
+			decodeOps(bus.read(r.pc++));
+		}
+
+		if (EI_IME == 1 && IME == 0) {
+			IME = 1;
+			EI_IME = 0;
+		}
 
 	}
 }
@@ -372,6 +379,14 @@ uint16_t SharpLR35902::getR16(R16 src) {
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~OPCode Functions~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
+
+void SharpLR35902::STOP() {
+
+}
+
+void SharpLR35902::HALT() {
+	halt = true;
+}
 
 void SharpLR35902::ld_u16_SP() {
 	uint16_t addr = getNext16();
