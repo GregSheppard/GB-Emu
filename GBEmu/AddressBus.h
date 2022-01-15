@@ -39,13 +39,15 @@ private:
 	uint8_t HRAM[0x7E + 1];
 	uint8_t interruptEnable;
 
-	long cycles;
+	int cycles;
 
 public:
 	AddressBus();
 	void write(uint16_t address, uint8_t value);
 	uint8_t read(uint16_t address);
-	void addCycles(short cycles);
+	void addCycles(int cycles);
+	int getCycles();
+	void setCycles(int cycles);
 	uint8_t getInterruptFlag();
 	uint8_t getInterruptEnable();
 	uint8_t* getRegister(uint16_t addr);

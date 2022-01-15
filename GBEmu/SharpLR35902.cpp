@@ -27,7 +27,7 @@ void SharpLR35902::decodeOps(uint8_t op) {
 	(this->*lut[op])();
 }
 
-void SharpLR35902::run() {
+void SharpLR35902::tick() {
 	uint8_t nextOp = bus.read(r.pc++);
 	handleInterrupts();
 	decodeOps(nextOp);

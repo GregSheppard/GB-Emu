@@ -4,18 +4,22 @@
 #include <stdio.h>
 #include <memory>
 #include "UI.h"
+#include "PPU.h"
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 #define FREQ 4194304
 
 int main() {
-	UI i;
+	//UI i;
 	AddressBus bus;
 	SharpLR35902 cpu(bus);
+	PPU ppu(bus);
+	
 	cpu.setPC(0x100);
 	while (true) {
-		cpu.run();
+		cpu.tick();
+		ppu.tick();
 	}
 
 }

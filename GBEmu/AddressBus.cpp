@@ -166,8 +166,16 @@ uint8_t* AddressBus::getRegister(uint16_t addr) {
 	}
 }
 
-void AddressBus::addCycles(short cycle) {
+void AddressBus::addCycles(int cycle) {
 	cycles += cycle;
+}
+
+void AddressBus::setCycles(int newCycles) {
+	cycles = newCycles;
+}
+
+int AddressBus::getCycles() {
+	return cycles;
 }
 
 uint8_t AddressBus::getInterruptEnable() {

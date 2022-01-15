@@ -551,6 +551,6 @@ private:
 
 public:
 	SharpLR35902(AddressBus& bus);
-	void run();
+	void tick();
 	void setPC(uint16_t addr);
 };
