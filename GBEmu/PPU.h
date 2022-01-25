@@ -16,6 +16,12 @@ struct Sprite {
 		:Ypos(y), Xpos(x), tileNum(tile), spriteFlags(flags) {};
 };
 
+struct Tile {
+	uint8_t lower;
+	uint8_t upper;
+	Tile(uint8_t low, uint8_t up) : lower(low), upper(up) {};
+};
+
 class PPU {
 private:
 	AddressBus& bus;
@@ -25,8 +31,13 @@ private:
 	uint8_t* LCDC;
 	uint8_t* STAT;
 	uint8_t* OAM[0x9F+1];
+	uint8_t* VRAMPointers[0x3FFF + 1];
+
+	uint8_t background[256][256] = { 0 };
+	uint8_t window[256][256] = { 0 };
 
 	int cycles;
+	int WINDOW_LINE_COUNTER;
 	PPUState currentState;
 
 	std::vector<Sprite> spriteBuffer;
@@ -34,4 +45,12 @@ public:
 	PPU(AddressBus& bus);
 	void tick();
 	PPUState getState();
+	void setState(PPUState state);
+	bool getLCDCFlag(int bit);
+	void setLCDCFlag(int bit);
+	uint8_t VRAM(uint16_t address);
+
+	uint8_t fetchBackgroundTileNumber(int xpos);
+	uint8_t fetchWindowTileNumber(int xpos);
+	Tile fetchTile(uint8_t tileNumber);
 };

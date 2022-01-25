@@ -12,7 +12,7 @@
 
 int main() {
 	//UI i;
-	AddressBus bus;
+	/*AddressBus bus;
 	SharpLR35902 cpu(bus);
 	PPU ppu(bus);
 	
@@ -20,7 +20,14 @@ int main() {
 	while (true) {
 		cpu.tick();
 		ppu.tick();
-	}
+	}*/
+
+	uint16_t base = 0x9000;
+	int8_t offset = 0xFF*16;
+	uint8_t unsignedOffset = 0x10;
+	uint16_t result = base + offset + unsignedOffset;
+
+	std::cout << "0x" << std::hex << result << std::endl;
 
 }
 
