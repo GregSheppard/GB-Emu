@@ -57,7 +57,6 @@ void PPU::tick() {
 			uint8_t backgroundTileNum = fetchBackgroundTileNumber(xpos);
 			Tile tile = fetchTile(backgroundTileNum);
 		}
-		if(getLCDCFlag(5) && )
 
 
 

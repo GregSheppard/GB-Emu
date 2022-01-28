@@ -29,7 +29,8 @@ private:
 	Register r;
 	bool IME, EI_IME;
 	AddressBus& bus;
-	bool halt = false;
+	bool HALTFlag = false;
+	uint8_t* IF, *IE;
 
 	//funcs
 	void setup();
@@ -37,7 +38,8 @@ private:
 	
 	//CPU functions
 	void decodeOps(uint8_t op);
-	void handleInterrupts();
+	bool handleInterrupts();
+	bool ISR();
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ~~~~~~~~~~~~~~~~CPU HELPER FUNCTIONS~~~~~~~~~~~~~~~~~~~~~

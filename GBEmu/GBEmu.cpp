@@ -3,8 +3,8 @@
 #undef main
 #include <stdio.h>
 #include <memory>
-#include "UI.h"
-#include "PPU.h"
+#include "GraphicsTest.h"
+#include "Timer.h"
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
@@ -12,23 +12,18 @@
 
 int main() {
 	//UI i;
-	/*AddressBus bus;
+	AddressBus bus;
 	SharpLR35902 cpu(bus);
-	PPU ppu(bus);
+	Timer timer(bus);
+	GraphicsTest gtest(bus);
 	
 	cpu.setPC(0x100);
 	while (true) {
+		bus.setCycles(0);
 		cpu.tick();
-		ppu.tick();
-	}*/
-
-	uint16_t base = 0x9000;
-	int8_t offset = 0xFF*16;
-	uint8_t unsignedOffset = 0x10;
-	uint16_t result = base + offset + unsignedOffset;
-
-	std::cout << "0x" << std::hex << result << std::endl;
-
+		timer.tick();
+		gtest.tick();
+	}
 }
 
 

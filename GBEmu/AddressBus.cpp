@@ -24,6 +24,7 @@ NOTABLE
 AddressBus::AddressBus() {
 	loadROMFromFile();
 	insertCartridge();
+	cycles = 0;
 }
 
 void AddressBus::loadROMFromFile() {
@@ -64,13 +65,15 @@ void AddressBus::insertCartridge() {
 
 void AddressBus::write(uint16_t addr, uint8_t value) {
 	cycles += 4;
+	//std::cout << "write to bus at address " << std::hex << addr << " with value " << +value << std::endl;
 	if (addr >= 0x0 && addr <= 0x3FFF) {
-		std::cout << "write to ROM" << std::endl;
+		std::cout << "[WARNING] Attempted to write to ROM" << std::endl;
 	}
 	else if (addr >= 0x4000 && addr <= 0x7FFF) {
-		std::cout << "write to ROM" << std::endl;
+		std::cout << "[WARNING] Attempted to write to ROM" << std::endl;
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		//std::cout << "write to VRAM at address " << addr << " value: " << value << std::endl;
 		VRAM[addr - 0x8000] = value;
 	}
 	else if (addr >= 0xA000 && addr <= 0xBFFF) {
@@ -90,6 +93,52 @@ void AddressBus::write(uint16_t addr, uint8_t value) {
 		if (addr == 0xFF01) {
 			std::cout << (char)value;
 		}
+		if (addr == 0xFF04) {
+			IO[addr - 0xFF00] = 0; //hacky fix later
+		}
+		if (addr == 0xFF07) {
+		}
+	}
+	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+		HRAM[addr - 0xFF80] = value;
+	}
+	else if (addr == 0xFFFF) {
+		interruptEnable = value;
+	}
+}
+
+void AddressBus::writeDEBUG(uint16_t addr, uint8_t value) {
+	//std::cout << "write to bus at address " << std::hex << addr << " with value " << +value << std::endl;
+	if (addr >= 0x0 && addr <= 0x3FFF) {
+		std::cout << "[WARNING] Attempted to write to ROM" << std::endl;
+	}
+	else if (addr >= 0x4000 && addr <= 0x7FFF) {
+		std::cout << "[WARNING] Attempted to write to ROM" << std::endl;
+	}
+	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		//std::cout << "write to VRAM at address " << addr << " value: " << value << std::endl;
+		VRAM[addr - 0x8000] = value;
+	}
+	else if (addr >= 0xA000 && addr <= 0xBFFF) {
+		ERAM[addr - 0xA000] = value;
+	}
+	else if (addr >= 0xC000 && addr <= 0xDFFF) {
+		WRAM[addr - 0xC000] = value;
+	}
+	else if (addr >= 0xE000 && addr <= 0xFDFF) { //echo ram
+		WRAM[addr - 0xE000] = value;
+	}
+	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		OAM[addr - 0xFE00] = value;
+	}
+	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
+		IO[addr - 0xFF00] = value;
+		if (addr == 0xFF01) {
+			std::cout << (char)value;
+		}
+		if (addr == 0xFF04) {
+			IO[addr - 0xFF00] = 0; //hacky fix later
+		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
 		HRAM[addr - 0xFF80] = value;
@@ -101,6 +150,7 @@ void AddressBus::write(uint16_t addr, uint8_t value) {
 
 uint8_t AddressBus::read(uint16_t addr) {
 	cycles += 4;
+	//std::cout << "read from bus at address " << addr << std::endl;
 	if (addr >= 0x0 && addr <= 0x3FFF) {
 		return bank0[addr];
 	}
@@ -124,6 +174,9 @@ uint8_t AddressBus::read(uint16_t addr) {
 	}
 	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
 		return IO[addr - 0xFF00];
+		if (addr == 0xFF00) {
+			return 0xFF;
+		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
 		return HRAM[addr - 0xFF80];

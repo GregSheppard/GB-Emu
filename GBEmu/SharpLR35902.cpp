@@ -7,6 +7,7 @@
 
 SharpLR35902::SharpLR35902(AddressBus& _bus) : bus(_bus) {
 	fillLut<0xFF>();
+	setup();
 }
 
 uint8_t SharpLR35902::getNext() {
@@ -28,47 +29,107 @@ void SharpLR35902::decodeOps(uint8_t op) {
 }
 
 void SharpLR35902::tick() {
-	uint8_t nextOp = bus.read(r.pc++);
-	handleInterrupts();
-	decodeOps(nextOp);
+	if (HALTFlag) {
+		if (IME) {
+			if (ISR()) {
+				HALTFlag = false;
+			}
+		}
+		else {
+			bus.addCycles(4);
+			if ((*IF) & (*IE)) {
+				HALTFlag = false;
+			}
+		}
+	}
+	else {
+		uint8_t nextOp = bus.read(r.pc++);
+		if (handleInterrupts()) {
+			nextOp = bus.read(r.pc++);
+		}
+		decodeOps(nextOp);
+	}
+
+}
+
+bool SharpLR35902::ISR() {
+	if ((*IE & 0b00000001) && (*IF & 0b00000001)) { //VBlank
+		IME = false;
+		*IF &= 0b11111110;
+		CALL_ADDR(0x40);
+		return true;
+	}
+	else if (((*IE & 0b00000010) >> 1) && ((*IF & 0b00000010) >> 1)) { //LCD STAT
+		IME = false;
+		*IF &= 0b11111101;
+		CALL_ADDR(0x48);
+		return true;
+	}
+	else if (((*IE & 0b00000100) >> 2) && ((*IF & 0b00000100) >> 2)) { //Timer
+		IME = false;
+		*IF &= 0b11111011;
+		CALL_ADDR(0x50);
+		return true;
+	}
+	else if (((*IE & 0b00001000) >> 3) && ((*IF & 0b00001000) >> 3)) { //Serial
+		IME = false;
+		*IF &= 0b11110111;
+		CALL_ADDR(0x58);
+		return true;
+	}
+	else if (((*IE & 0b00010000) >> 4) && ((*IF & 0b00010000) >> 4)) { //Joypad
+		IME = false;
+		*IF &= 0b11101111;
+		CALL_ADDR(0x60);
+		return true;
+	}
+}
+
+bool SharpLR35902::handleInterrupts() {
+	if (IME) {
+		if ((*IE & 0b00000001) && (*IF & 0b00000001)) { //VBlank
+			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
+			IME = false;
+			*IF &= 0b11111110;
+			CALL_ADDR(0x40);
+			return true;
+		}
+		else if (((*IE & 0b00000010) >> 1) && ((*IF & 0b00000010) >> 1)) { //LCD STAT
+			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
+			IME = false;
+			*IF &= 0b11111101;
+			CALL_ADDR(0x48);
+			return true;
+		}
+		else if (((*IE & 0b00000100) >> 2) && ((*IF & 0b00000100) >> 2)) { //Timer
+			r.pc--; bus.addCycles(8); //decrement pc to undo opcode fetch
+			IME = false;
+			*IF &= 0b11111011;
+			CALL_ADDR(0x50);
+			return true;
+		}
+		else if (((*IE & 0b00001000) >> 3) && ((*IF & 0b00001000) >> 3)) { //Serial
+			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
+			IME = false;
+			*IF &= 0b11110111;
+			CALL_ADDR(0x58);
+			return true;
+		}
+		else if (((*IE & 0b00010000) >> 4) && ((*IF & 0b00010000) >> 4)) { //Joypad
+			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
+			IME = false;
+			*IF &= 0b11101111;
+			CALL_ADDR(0x60);
+			return true;
+		}
+	}
+
 	if (EI_IME) {
 		IME = true;
 		EI_IME = false;
 	}
-}
 
-void SharpLR35902::handleInterrupts() {
-	if (IME) {
-		uint8_t IE = bus.getInterruptEnable();
-		uint8_t IF = bus.getInterruptFlag();
-
-		if ((IE & 0b00000001) && (IF & 0b00000001)) { //VBlank
-			r.pc--; bus.addCycles(4); //decrement pc to undo opcode fetch
-			IME = false;
-			IF &= 0b11111110;
-			CALL_ADDR(0x40);
-		}
-		else if (((IE & 0b00000010) >> 1) && ((IF & 0b00000010) >> 1)) { //LCD STAT
-			IME = false;
-			IF &= 0b11111101;
-			CALL_ADDR(0x48);
-		}
-		else if (((IE & 0b00000100) >> 2) && ((IF & 0b00000100) >> 2)) { //Timer
-			IME = false;
-			IF &= 0b11111011;
-			CALL_ADDR(0x50);
-		}
-		else if (((IE & 0b00001000) >> 3) && ((IF & 0b00001000) >> 3)) { //Serial
-			IME = false;
-			IF &= 0b11110111;
-			CALL_ADDR(0x58);
-		}
-		else if (((IE & 0b00010000) >> 4) && ((IF & 0b00010000) >> 4)) { //Joypad
-			IME = false;
-			IF &= 0b11101111;
-			CALL_ADDR(0x60);
-		}
-	}
+	return false;
 }
 
 void SharpLR35902::setPC(uint16_t addr) {
@@ -87,29 +148,38 @@ void SharpLR35902::setup() {
 	IME = 0;
 	EI_IME = 0;
 
-	bus.write(0xFF10, 0x80); //NR10
-	bus.write(0xFF11, 0xBF); //NR11
-	bus.write(0xFF12, 0xF3); //NR12
-	bus.write(0xFF14, 0xBF); //NR14
-	bus.write(0xFF16, 0x3F); //NR21
-	bus.write(0xFF19, 0xBF); //NR24
-	bus.write(0xFF1A, 0x7F); //NR30
-	bus.write(0xFF1B, 0xFF); //NR31
-	bus.write(0xFF1C, 0x9F); //NR32
-	bus.write(0xFF1E, 0xBF); //NR34
-	bus.write(0xFF20, 0xFF); //NR41
-	bus.write(0xFF23, 0xBF); //NR44
-	bus.write(0xFF24, 0x77); //NR50
-	bus.write(0xFF25, 0xF3); //NR51
-	bus.write(0xFF26, 0xF1); //NR52
-	bus.write(0xFF40, 0x91); //LCDC
-	bus.write(0xFF47, 0xFC); //BGP
-	bus.write(0xFF48, 0xFF); //OBP0
-	bus.write(0xFF49, 0xFF); //OBP1
+	IF = bus.getRegister(0xFF0F);
+	IE = bus.getRegister(0xFFFF);
 
-	bus.write(0xFF44, 0x90); //PEACHES LOGS?
-	bus.write(0xDD03, 0xDF);
-	bus.write(0xDD01, 0xDF);
+	bus.writeDEBUG(0xFF04, 0x18); //DIV
+	bus.writeDEBUG(0xFF05, 0x0); //TIMA
+	bus.writeDEBUG(0xFF06, 0x0); //TMA
+	bus.writeDEBUG(0xFF07, 0xF8); //TAC
+	bus.writeDEBUG(0xFF0F, 0xE1); //IF
+
+	/*bus.writeDEBUG(0xFF10, 0x80); //NR10
+	bus.writeDEBUG(0xFF11, 0xBF); //NR11
+	bus.writeDEBUG(0xFF12, 0xF3); //NR12
+	bus.writeDEBUG(0xFF14, 0xBF); //NR14
+	bus.writeDEBUG(0xFF16, 0x3F); //NR21
+	bus.writeDEBUG(0xFF19, 0xBF); //NR24
+	bus.writeDEBUG(0xFF1A, 0x7F); //NR30
+	bus.writeDEBUG(0xFF1B, 0xFF); //NR31
+	bus.writeDEBUG(0xFF1C, 0x9F); //NR32
+	bus.writeDEBUG(0xFF1E, 0xBF); //NR34
+	bus.writeDEBUG(0xFF20, 0xFF); //NR41
+	bus.writeDEBUG(0xFF23, 0xBF); //NR44
+	bus.writeDEBUG(0xFF24, 0x77); //NR50
+	bus.writeDEBUG(0xFF25, 0xF3); //NR51
+	bus.writeDEBUG(0xFF26, 0xF1); //NR52
+	bus.writeDEBUG(0xFF40, 0x91); //LCDC
+	bus.writeDEBUG(0xFF47, 0xFC); //BGP
+	bus.writeDEBUG(0xFF48, 0xFF); //OBP0
+	bus.writeDEBUG(0xFF49, 0xFF); //OBP1
+
+	bus.writeDEBUG(0xFF44, 0x90); //PEACHES LOGS?
+	bus.writeDEBUG(0xDD03, 0xDF);
+	bus.writeDEBUG(0xDD01, 0xDF);*/
 }
 
 void SharpLR35902::log(std::ofstream& file) {
@@ -335,7 +405,7 @@ void SharpLR35902::STOP() {
 }
 
 void SharpLR35902::HALT() {
-	halt = true;
+	HALTFlag = true;
 }
 
 void SharpLR35902::ld_u16_SP() {
@@ -413,7 +483,7 @@ void SharpLR35902::JR() {
 }
 
 void SharpLR35902::CALL_ADDR(uint16_t addr) {
-	r.sp--; bus.addCycles(4); // decrement sp
+	r.sp--; bus.addCycles(4);
 	bus.write(r.sp, ((r.pc) & 0xFF00) >> 8);
 	r.sp--;
 	bus.write(r.sp, (r.pc) & 0x00FF);
@@ -603,6 +673,7 @@ void SharpLR35902::JP_U16() {
 
 void SharpLR35902::DI() {
 	IME = false;
+	EI_IME = false;
 }
 
 void SharpLR35902::EI() {
