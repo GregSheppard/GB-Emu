@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include "AddressBus.h"
+#include <SDL.h>
 
 enum class PPUState {
 	HBlank, VBlank, OAMScan, Drawing
@@ -25,7 +26,7 @@ struct Tile {
 class PPU {
 private:
 	AddressBus& bus;
-	uint8_t* WX, * WY, * SCY, *SCX, *LY, *LYC;
+	uint8_t* WX, * WY, * SCY, *SCX, *LY, *LYC, *BGP;
 	uint16_t backgroundFIFO;
 	uint16_t spriteFIFO;
 	uint8_t* LCDC;
@@ -33,12 +34,17 @@ private:
 	uint8_t* OAM[0x9F+1];
 	uint8_t* VRAMPointers[0x3FFF + 1];
 
-	uint8_t background[256][256] = { 0 };
-	uint8_t window[256][256] = { 0 };
+	uint8_t framebuffer[256 * 256 * 3];
 
-	int cycles;
-	int WINDOW_LINE_COUNTER;
+	int totalCycles;
+	int newCycles;
+	int scanlineCycles;
 	PPUState currentState;
+
+	std::shared_ptr<SDL_Renderer> renderer;
+	std::shared_ptr<SDL_Window> window = NULL;
+	std::shared_ptr<SDL_Surface> surf = NULL;
+	std::shared_ptr<SDL_Texture> tex = NULL;
 
 	std::vector<Sprite> spriteBuffer;
 public:
@@ -53,4 +59,6 @@ public:
 	uint8_t fetchBackgroundTileNumber(int xpos);
 	uint8_t fetchWindowTileNumber(int xpos);
 	Tile fetchTile(uint8_t tileNumber);
+	void fetchBackground(uint8_t row);
+	void initSDL();
 };

@@ -45,7 +45,9 @@ public:
 	AddressBus();
 	void write(uint16_t address, uint8_t value);
 	void writeDEBUG(uint16_t address, uint8_t value);
+	void loadBootrom();
 	uint8_t read(uint16_t address);
+	uint8_t readDEBUG(uint16_t address);
 	void addCycles(int cycles);
 	int getCycles();
 	void setCycles(int cycles);

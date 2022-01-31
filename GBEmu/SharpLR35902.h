@@ -123,7 +123,7 @@ private:
 	void JR();
 	void ld_u16_SP();
 	void decodeCB();
-	void nop() {}
+	void nop() { bus.addCycles(4); }
 	void LD_HL_SP_i8();
 	void LD_A_FF00_u8();
 	void ADD_SP_i8();

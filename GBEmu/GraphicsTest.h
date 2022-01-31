@@ -27,36 +27,18 @@ struct Tile {
 
 class GraphicsTest {
 private:
-	AddressBus& bus;
-	uint8_t* WX, * WY, * SCY, * SCX, * LY, * LYC;
-	uint16_t backgroundFIFO;
-	uint16_t spriteFIFO;
-	uint8_t* LCDC;
-	uint8_t* STAT;
-	uint8_t* OAM[0x9F + 1];
-	uint8_t* VRAMPointers[0x3FFF + 1];
-
-	int cycles;
-	int WINDOW_LINE_COUNTER;
-	PPUState currentState;
-
-	std::vector<Sprite> spriteBuffer;
-
 	std::shared_ptr<SDL_Renderer> renderer;
 	std::shared_ptr<SDL_Window> window = NULL;
 
-public:
-	GraphicsTest(AddressBus& bus);
-	void tick();
-	PPUState getState();
-	void setState(PPUState state);
-	bool getLCDCFlag(int bit);
-	void setLCDCFlag(int bit);
-	uint8_t VRAM(uint16_t address);
+	uint8_t tile[16] = {
+	0x0, 0x0, 0x3c, 0x3c, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x66, 0x3c, 0x3c, 0x0, 0x0
+	};
 
-	uint8_t fetchBackgroundTileNumber(int xpos);
-	uint8_t fetchWindowTileNumber(int xpos);
-	Tile fetchTile(uint8_t tileNumber);
+	uint8_t framebuffer[160 * 144 * 3] = { 0 };
+
+public:
+	GraphicsTest();
+	void tick();
 
 	void initSDL();
 };

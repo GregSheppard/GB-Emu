@@ -13,64 +13,118 @@ PPU::PPU(AddressBus& _bus) : bus(_bus) {
 	LCDC = bus.getRegister(0xFF40);
 	STAT = bus.getRegister(0xFF41);
 
+	BGP = bus.getRegister(0xFF47);
+
 	for (int i = 0x0; i <= 0x9F; i++) { // OAM memory 0xFE00 - 0xFE9F
 		OAM[i] = bus.getRegister(0xFE00 + i);
 	}
 
-	for (int i = 0x0; i <= 0x3FFF; i++) {
-		VRAMPointers[i] = bus.getRegister(0x8000 + i);
-	}
+	//for (int i = 0x0; i <= 0x3FFF; i++) {
+	//	VRAMPointers[i] = bus.getRegister(0x8000 + i);
+	//}
 
+	totalCycles = 0;
+	newCycles = 0;
 
+	setState(PPUState::HBlank);
+
+	initSDL();
+	tex.reset(SDL_CreateTexture(renderer.get(), SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STREAMING, 256, 144));
 }
 
 void PPU::tick() {
-	int cycles = bus.getCycles();
-	currentState = getState();
-	switch (currentState) {
-	case PPUState::HBlank:
-	{
-		break;
-	}
-	case PPUState::VBlank:
-	{
-		break;
-	}
-	case PPUState::OAMScan:
-	{
-		if (cycles >= 80) {
-			for (int i = 0x0; i <= 0x9F; i+=4) {
-				Sprite s(*OAM[i], *OAM[i+1], *OAM[i+2], *OAM[i+3]);
-				if (s.Xpos > 0 && (*LY + 16) >= s.Ypos && (*LY+16) < (s.Ypos+8+8*getLCDCFlag(3)) && spriteBuffer.size() < 10) {
-					spriteBuffer.push_back(s);
+	if (getLCDCFlag(7)) {
+		newCycles += bus.getCycles(); //fetch how many cycles have passed
+		scanlineCycles += newCycles; // add them to the total number of cycles for the scanline
+		totalCycles += newCycles;
+		//std::cout << "LCDC: " << +(*LCDC) << std::endl;
+
+		currentState = getState();
+		switch (currentState) {
+		case PPUState::HBlank:
+		{
+			if (scanlineCycles >= 456) {
+				scanlineCycles -= 456; // new scanline
+				if ((*LY) >= 144) {
+					setState(PPUState::VBlank);
+				}
+				else {
+					setState(PPUState::OAMScan);
 				}
 			}
-			//set state to drawing
-			setState(PPUState::Drawing);
-			bus.setCycles(cycles - 80);
+			break;
 		}
-		break;
-	}
-	case PPUState::Drawing:
-	{
-		for (int xpos = 0; xpos < *WX - 7; xpos++) { //background
-			uint8_t backgroundTileNum = fetchBackgroundTileNumber(xpos);
-			Tile tile = fetchTile(backgroundTileNum);
-		}
-
-
-
-		
-		/*for (int i = 0; i < spriteBuffer.size(); i++) {
-			if (spriteBuffer.at(i).Xpos <= xpos) {
-				uint8_t tileNum = spriteBuffer.at(i).tileNum; //fetch tile number
-				uint8_t sLower = VRAM((0x8000 + tileNum * 16) + 2 * ((*LY + *SCY) % 8)); //fetch lower
-				uint8_t sUpper = VRAM((0x8000 + tileNum * 16 + 1) + 2 * ((*LY + *SCY) % 8)); //fetch upper
+		case PPUState::VBlank:
+		{
+			if (totalCycles >= 70224) {
+				SDL_UpdateTexture(tex.get(), NULL, framebuffer, 256 * sizeof(uint8_t) * 3);
+				SDL_RenderCopy(renderer.get(), tex.get(), NULL, NULL);
+				SDL_RenderPresent(renderer.get());
+				totalCycles -= 70224; // new frame
+				setState(PPUState::OAMScan);
+				(*LY) = 0;
 			}
-		}*/
-
-		break;
+			break;
+		}
+		case PPUState::OAMScan:
+		{
+			if (scanlineCycles >= 80) {
+				for (int i = 0x0; i <= 0x9F; i += 4) {
+					Sprite s(*OAM[i], *OAM[i + 1], *OAM[i + 2], *OAM[i + 3]);
+					if (s.Xpos > 0 && (*LY + 16) >= s.Ypos && (*LY + 16) < (s.Ypos + 8 + 8 * getLCDCFlag(3)) && spriteBuffer.size() < 10) {
+						spriteBuffer.push_back(s);
+					}
+				}
+				//set state to drawing
+				setState(PPUState::Drawing);
+			}
+			break;
+		}
+		case PPUState::Drawing:
+		{
+			if (scanlineCycles >= 172) {
+				fetchBackground((*LY));
+				(*LY)++;
+				setState(PPUState::HBlank);
+			}
+			break;
+		}
+		}
 	}
+}
+
+void PPU::initSDL() {
+	if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
+		std::cout << "FATAL ERROR: could not initalize SDL: " << SDL_GetError() << std::endl;
+		throw std::runtime_error("FATAL ERROR: could not initalize SDL!");
+	}
+
+	if (!SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1")) {
+		std::cout << "WARNING: Linear texture filtering not enabled!";
+	}
+
+	window = std::shared_ptr<SDL_Window>(SDL_CreateWindow("Gameboy Emulator", SDL_WINDOWPOS_UNDEFINED,
+		SDL_WINDOWPOS_UNDEFINED, 640, 576, SDL_WINDOW_SHOWN),
+		[](SDL_Window* window) {
+			SDL_DestroyWindow(window);
+			window = NULL;
+		});
+
+	if (!window) {
+		std::cout << "FATAL ERROR: could not create SDL window: " << SDL_GetError() << std::endl;
+		throw std::runtime_error("FATAL ERROR: could not create SDL window!");
+	}
+
+	renderer = std::shared_ptr<SDL_Renderer>(SDL_CreateRenderer(window.get(), -1,
+		SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC),
+		[](SDL_Renderer* renderer) {
+			SDL_DestroyRenderer(renderer);
+			renderer = NULL;
+		});
+
+	if (!renderer) {
+		std::cout << "FATAL ERROR: could not initialize SDL renderer: " << SDL_GetError() << std::endl;
+		throw std::runtime_error("FATAL ERROR: could not create SDL renderer!");
 	}
 }
 
@@ -106,7 +160,7 @@ void PPU::setState(PPUState state) {
 	}
 	case PPUState::VBlank:
 	{
-		*STAT = (*STAT & 0b11111100) + 0b1;
+		*STAT = (*STAT & 0b11111100) + 0b01;
 		break;
 	}
 	case PPUState::OAMScan:
@@ -122,38 +176,25 @@ void PPU::setState(PPUState state) {
 	}
 }
 
-uint8_t PPU::fetchBackgroundTileNumber(int xpos) {
-	uint16_t basePointer = 0x9800;
-	uint16_t wraparoundOffset = 32*(((*LY+*SCY) & 0xFF) /8);
-	uint16_t xposOffset = xpos + ((*SCX / 8) & 0x1f);
-	uint16_t totalOffset = (xposOffset + wraparoundOffset) & 0x3FF;
-	if (getLCDCFlag(3)) { //BG tile map select
-		uint16_t modeOffset = 0x400; 
-		return VRAM(basePointer + modeOffset + totalOffset);
-	}
-	else {
-		return VRAM(basePointer + totalOffset);
-	}
-}
+void PPU::fetchBackground(uint8_t row) {
+	uint16_t tMapBasePointer = 0x9800 + getLCDCFlag(3) * 0x400;
+	uint16_t tDataBasePointer = 0x8000 + getLCDCFlag(4) * 0x1000;
+	for (int j = 0; j < 256; j++) {
+		//wrapping
+		uint8_t offsetY = row + (*SCY);
+		uint8_t offsetX = j + (*SCX);
 
-Tile PPU::fetchTile(uint8_t tileNumber) {
-	if (getLCDCFlag(4)) { // 0x8000 method
-		uint16_t basePointer = 0x8000;
-		uint16_t tileOffset = tileNumber * 16;
-		uint16_t lyOffset = 2 * ((*LY + *SCY) % 8);
-		uint16_t result = basePointer + tileOffset + lyOffset;
-		Tile tile(VRAM(result), VRAM(result + 0x1));
-
-		return tile;
+		uint8_t tileNumber = bus.readDEBUG(tMapBasePointer + ((offsetY / 8 * 32) + (offsetX / 8)));
+		uint8_t colour = 0;
+		if (tDataBasePointer == 0x8000) {
+			colour = (bus.readDEBUG(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2)) >> (7 - (offsetX % 8)) & 0x1) +(bus.readDEBUG(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2) + 1) >> (7 - (offsetX % 8)) & 0x1) * 2;
+		}
+		else {
+			colour = (bus.readDEBUG(tDataBasePointer + 0x800 + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2)) >> (7 - (offsetX % 8)) & 0x1) + ((bus.readDEBUG(tDataBasePointer + 0x800 + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2) + 1) >> (7 - (offsetX % 8)) & 0x1) * 2);
+		}
+		framebuffer[(row * 256 * 3) + (j * 3)] = colour * 85;
+		framebuffer[(row * 256 * 3) + (j * 3) + 1] = colour * 85;
+		framebuffer[(row * 256 * 3) + (j * 3) + 2] = colour * 85;
 	}
-	else { //0x8800 method
-		uint16_t basePointer = 0x9000;
-		int8_t signedTileOffset = (int8_t)tileNumber * 16;
-		uint16_t lyOffset = 2 * ((*LY + *SCY) % 8);
-		uint16_t result = basePointer + signedTileOffset + lyOffset;
-		Tile tile(VRAM(result), VRAM(result + 0x1));
-
-		return tile;
-	}
-
+	
 }

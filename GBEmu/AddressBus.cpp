@@ -23,6 +23,7 @@ NOTABLE
 
 AddressBus::AddressBus() {
 	loadROMFromFile();
+	//loadBootrom();
 	insertCartridge();
 	cycles = 0;
 }
@@ -54,6 +55,12 @@ void AddressBus::loadROMFromFile() {
 	}
 }
 
+void AddressBus::loadBootrom() {
+	for (int i = 0; i <= 0x100; i++) {
+		bank0[i] = ROM[i];
+	}
+}
+
 void AddressBus::insertCartridge() {
 	for (int i = 0; i <= 0x3FFF; i++) {
 		bank0[i] = ROM[i];
@@ -73,7 +80,7 @@ void AddressBus::write(uint16_t addr, uint8_t value) {
 		std::cout << "[WARNING] Attempted to write to ROM" << std::endl;
 	}
 	else if (addr >= 0x8000 && addr <= 0x9FFF) {
-		//std::cout << "write to VRAM at address " << addr << " value: " << value << std::endl;
+		//std::cout << "write to VRAM at address " << addr << " value: " << +value << std::endl;
 		VRAM[addr - 0x8000] = value;
 	}
 	else if (addr >= 0xA000 && addr <= 0xBFFF) {
@@ -97,6 +104,9 @@ void AddressBus::write(uint16_t addr, uint8_t value) {
 			IO[addr - 0xFF00] = 0; //hacky fix later
 		}
 		if (addr == 0xFF07) {
+		}
+		if (addr == 0xFF40) {
+			std::cout << "write to lcdc with value: " << +value << std::endl;
 		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
@@ -150,6 +160,43 @@ void AddressBus::writeDEBUG(uint16_t addr, uint8_t value) {
 
 uint8_t AddressBus::read(uint16_t addr) {
 	cycles += 4;
+	//std::cout << "read from bus at address " << addr << std::endl;
+	if (addr >= 0x0 && addr <= 0x3FFF) {
+		return bank0[addr];
+	}
+	else if (addr >= 0x4000 && addr <= 0x7FFF) {
+		return bankN[addr - 0x4000];
+	}
+	else if (addr >= 0x8000 && addr <= 0x9FFF) {
+		return VRAM[addr - 0x8000];
+	}
+	else if (addr >= 0xA000 && addr <= 0xBFFF) {
+		return ERAM[addr - 0xA000];
+	}
+	else if (addr >= 0xC000 && addr <= 0xDFFF) {
+		return WRAM[addr - 0xC000];
+	}
+	else if (addr >= 0xE000 && addr <= 0xFDFF) { //echo ram
+		return WRAM[addr - 0xE000];
+	}
+	else if (addr >= 0xFE00 && addr <= 0xFE9F) {
+		return OAM[addr - 0xFE00];
+	}
+	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
+		return IO[addr - 0xFF00];
+		if (addr == 0xFF00) {
+			return 0xFF;
+		}
+	}
+	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
+		return HRAM[addr - 0xFF80];
+	}
+	else if (addr == 0xFFFF) {
+		return interruptEnable;
+	}
+}
+
+uint8_t AddressBus::readDEBUG(uint16_t addr) {
 	//std::cout << "read from bus at address " << addr << std::endl;
 	if (addr >= 0x0 && addr <= 0x3FFF) {
 		return bank0[addr];

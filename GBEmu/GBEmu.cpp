@@ -3,8 +3,8 @@
 #undef main
 #include <stdio.h>
 #include <memory>
-#include "GraphicsTest.h"
 #include "Timer.h"
+#include "PPU.h"
 
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
@@ -15,14 +15,14 @@ int main() {
 	AddressBus bus;
 	SharpLR35902 cpu(bus);
 	Timer timer(bus);
-	GraphicsTest gtest(bus);
+	PPU ppuUnit(bus);
 	
 	cpu.setPC(0x100);
 	while (true) {
 		bus.setCycles(0);
 		cpu.tick();
+		ppuUnit.tick();
 		timer.tick();
-		gtest.tick();
 	}
 }
 
