@@ -197,7 +197,7 @@ uint8_t AddressBus::read(uint16_t addr) {
 }
 
 uint8_t AddressBus::readDEBUG(uint16_t addr) {
-	//std::cout << "read from bus at address " << addr << std::endl;
+	//std::cout << "read from bus at address 0x" << std::hex << +addr << std::endl;
 	if (addr >= 0x0 && addr <= 0x3FFF) {
 		return bank0[addr];
 	}

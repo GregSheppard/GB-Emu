@@ -33,6 +33,7 @@ private:
 	uint8_t* STAT;
 	uint8_t* OAM[0x9F+1];
 	uint8_t* VRAMPointers[0x3FFF + 1];
+	int frameCount = 0;
 
 	uint8_t framebuffer[256 * 256 * 3];
 

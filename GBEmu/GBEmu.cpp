@@ -1,17 +1,12 @@
 #include "SharpLR35902.h"
 #include "SDL.h"
-#undef main
-#include <stdio.h>
+#include "AddressBus.h"
 #include <memory>
 #include "Timer.h"
 #include "PPU.h"
-
-#define WINDOW_WIDTH 640
-#define WINDOW_HEIGHT 480
-#define FREQ 4194304
+#undef main
 
 int main() {
-	//UI i;
 	AddressBus bus;
 	SharpLR35902 cpu(bus);
 	Timer timer(bus);

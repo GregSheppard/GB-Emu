@@ -31,7 +31,7 @@ private:
 	//memory
 	uint8_t bank0[0x3FFF + 1];
 	uint8_t bankN[0x3FFF + 1];
-	uint8_t VRAM[0x3FFF + 1];
+	
 	uint8_t ERAM[0x3FFF + 1];
 	uint8_t WRAM[0x7FFF + 1];
 	uint8_t OAM[0x9F + 1];
@@ -42,6 +42,7 @@ private:
 	int cycles;
 
 public:
+	uint8_t VRAM[0x3FFF + 1];
 	AddressBus();
 	void write(uint16_t address, uint8_t value);
 	void writeDEBUG(uint16_t address, uint8_t value);
