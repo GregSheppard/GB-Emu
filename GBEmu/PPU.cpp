@@ -33,32 +33,6 @@ PPU::PPU(AddressBus& _bus) : bus(_bus) {
 }
 
 void PPU::tick() {
-	/*if (getLCDCFlag(7)) {
-		uint16_t tileMap = 0x9800 + getLCDCFlag(3) * 0x400;
-		uint16_t basePointer = getLCDCFlag(4) ? 0x8000 : 0x9000;
-		uint8_t lower, upper, colour;
-		for (int j = 0; j < 256; j++) {
-			for (int i = 0; i < 256; i++) {
-				uint8_t tileNumber = VRAM(tileMap + i / 8 + (j / 8) * 32);
-				if (getLCDCFlag(4)) {
-					lower = VRAM(basePointer + tileNumber * 16 + (j % 8) * 2);
-					upper = VRAM(basePointer + tileNumber * 16 + (j % 8) * 2 + 1);
-				}
-				else {
-					lower = VRAM(basePointer + ((int8_t)tileNumber * 16) + (j % 8) * 2);
-					upper = VRAM(basePointer + ((int8_t)tileNumber * 16) + (j % 8) * 2 + 1);
-				}
-				colour = ((lower >> (7 - (i % 8))) & 1) + ((upper >> (7 - (i % 8))) & 1) << 1;
-				framebuffer[(i * 3) + (j * 256 * 3)] = 255 - colour * 85;
-				framebuffer[(i * 3) + (j * 256 * 3) + 1] = 255 - colour * 85;
-				framebuffer[(i * 3) + (j * 256 * 3) + 2] = 255 - colour * 85;
-			}
-		}
-		SDL_UpdateTexture(tex.get(), NULL, framebuffer, 256 * sizeof(uint8_t) * 3);
-		SDL_RenderCopy(renderer.get(), tex.get(), NULL, NULL);
-		SDL_RenderPresent(renderer.get());
-	}*/
-	
 	if (getLCDCFlag(7)) {
 		newCycles += bus.getCycles(); //fetch how many cycles have passed
 		scanlineCycles += newCycles; // add them to the total number of cycles for the scanline
@@ -203,60 +177,11 @@ void PPU::setState(PPUState state) {
 	}
 }
 
-/*void PPU::fetchBackground(uint8_t row) {
-	uint16_t tMapBasePointer = 0x9800 + getLCDCFlag(3) * 0x400 - 0x8000;
-	uint16_t tDataBasePointer = getLCDCFlag(4) ? 0x0 : 0x1000;
-	uint8_t offsetY = row + (*SCY);
-	for (int j = 0; j < 256; j++) {
-		uint8_t offsetX = j + (*SCX);
-		uint8_t tileNumber = bus.VRAM[(tMapBasePointer + ((offsetY / 8 * 32) + (offsetX / 8)))];
-		uint8_t colour = 0;
-		if (tDataBasePointer == 0x8000) {
-			colour = (bus.VRAM[(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2))] >> (7 - (offsetX % 8)) & 0x1) +
-				(bus.VRAM[(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2) + 1)] >> (7 - (offsetX % 8)) & 0x1) * 2;
-		}
-		else {
-			colour = (bus.VRAM[(tDataBasePointer + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2))] >> (7 - (offsetX % 8)) & 0x1) + ((bus.VRAM[(tDataBasePointer + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2) + 1)] >> (7 - (offsetX % 8)) & 0x1) * 2);
-		}
-		framebuffer[(row * 256 * 3) + (j * 3)] = 255 - colour * 85;
-		framebuffer[(row * 256 * 3) + (j * 3) + 1] = 255 - colour * 85;
-		framebuffer[(row * 256 * 3) + (j * 3) + 2] = 255 - colour * 85;
-	}
-	
-}*/
-
-/*void PPU::fetchBackground(uint8_t row) {
-	uint16_t tMapBasePointer = 0x9800 + getLCDCFlag(3) * 0x400 - 0x8000;
-	uint16_t tDataBasePointer = getLCDCFlag(4) ? 0x0 : 0x1000;
-	uint8_t offsetY = row + (*SCY);
-	for (int j = 0; j < 256; j++) {
-		uint8_t offsetX = j + (*SCX);
-		uint8_t tileNumber = bus.VRAM[(tMapBasePointer + ((offsetY / 8 * 32) + (offsetX / 8)))];
-		uint8_t colour, lower, upper;
-		if (tDataBasePointer == 0x8000) {
-			upper = bus.VRAM[(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2))];
-			lower = bus.VRAM[(tDataBasePointer + (tileNumber * 0x10) + (offsetY % 8 * 2) + 1)];
-		}
-		else {
-			upper = bus.VRAM[(tDataBasePointer + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2))];
-			lower = bus.VRAM[(tDataBasePointer + ((int8_t)tileNumber * 0x10) + (offsetY % 8 * 2) + 1)];
-		}
-
-		while ((j % 8) != 0) {
-			colour = (lower >> (7 - ((j+(*SCX)) % 8)) & 0x1) + (upper >> (7 - ((j + (*SCX)) % 8)) & 0x1)*2;
-			framebuffer[(row * 256 * 3) + (j * 3)] = 255 - colour * 85;
-			framebuffer[(row * 256 * 3) + (j * 3) + 1] = 255 - colour * 85;
-			framebuffer[(row * 256 * 3) + (j * 3) + 2] = 255 - colour * 85;
-			j++;
-		}
-	}
-
-}*/
-
 void PPU::fetchBackground(uint8_t row) {
 	uint16_t tileMap = 0x9800 + getLCDCFlag(3) * 0x4000 - 0x8000;
 	uint16_t basePointer = getLCDCFlag(4) ? 0x0 : 0x1000;
 	uint8_t yoffset = row + (*SCY);
+	uint8_t colour = 0;
 	if (getLCDCFlag(4)) { //0x8000 method
 		for (int i = 0; i < 256; i += 8) {
 			uint8_t xoffset = i + (*SCX);
@@ -264,7 +189,7 @@ void PPU::fetchBackground(uint8_t row) {
 			uint8_t lower = bus.VRAM[basePointer + (tileNumber*0x10) + (yoffset % 8)*2];
 			uint8_t upper = bus.VRAM[basePointer + (tileNumber * 0x10) + (yoffset % 8)*2 + 1];
 			for (int j = 0; j < 8; j++) {
-				uint8_t colour = (lower >> (7 - ((xoffset + j) % 8)) & 0x1) + (upper >> (7 - ((xoffset + j) % 8)) & 0x1) << 1;
+				colour = (lower >> (7 - ((xoffset + j) % 8)) & 0x1) + (upper >> (7 - ((xoffset + j) % 8)) & 0x1) << 1;
 				framebuffer[(row * 256 * 3) + ((i+j) * 3)] = 255 - colour * 85;
 				framebuffer[(row * 256 * 3) + ((i + j) * 3) + 1] = 255 - colour * 85;
 				framebuffer[(row * 256 * 3) + ((i + j) * 3) + 2] = 255 - colour * 85;

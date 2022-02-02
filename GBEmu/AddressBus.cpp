@@ -103,11 +103,6 @@ void AddressBus::write(uint16_t addr, uint8_t value) {
 		if (addr == 0xFF04) {
 			IO[addr - 0xFF00] = 0; //hacky fix later
 		}
-		if (addr == 0xFF07) {
-		}
-		if (addr == 0xFF40) {
-			std::cout << "write to lcdc with value: " << +value << std::endl;
-		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
 		HRAM[addr - 0xFF80] = value;
@@ -183,9 +178,12 @@ uint8_t AddressBus::read(uint16_t addr) {
 		return OAM[addr - 0xFE00];
 	}
 	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
-		return IO[addr - 0xFF00];
 		if (addr == 0xFF00) {
+			std::cout << "check joypad" << std::endl;
 			return 0xFF;
+		}
+		else {
+			return IO[addr - 0xFF00];
 		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
@@ -220,9 +218,12 @@ uint8_t AddressBus::readDEBUG(uint16_t addr) {
 		return OAM[addr - 0xFE00];
 	}
 	else if (addr >= 0xFF00 && addr <= 0xFF7F) {
-		return IO[addr - 0xFF00];
 		if (addr == 0xFF00) {
+			std::cout << "check joypad" << std::endl;
 			return 0xFF;
+		}
+		else {
+			return IO[addr - 0xFF00];
 		}
 	}
 	else if (addr >= 0xFF80 && addr <= 0xFFFE) {
